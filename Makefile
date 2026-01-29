@@ -6,4 +6,5 @@ build:
 
 .PHONY:
 flake:
+	nix flake update
 	nix build .#cage
