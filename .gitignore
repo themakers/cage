@@ -1,4 +1,5 @@
 .idea
 *.iml
+.mkctx
 /tmp
 /cage
