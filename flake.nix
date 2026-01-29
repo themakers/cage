@@ -52,7 +52,7 @@
 
             dontUseCgo = true;
 
-            go = pkgs.go;
+            go = pkgs.go_1_25;
 
             meta = with pkgs.lib; {
               description = "Minimal SSH-based secrets manager (age + existing SSH Ed25519 keys), fully static";
