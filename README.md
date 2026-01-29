@@ -36,6 +36,9 @@ cage decrypt
 
 # Export merged plaintext for CI
 cage dump dev-local > .env
+
+# Or even
+go run github.com/themakers/cage@latest dump dev-local
 ````
 
 ## `.cage.yaml`:
