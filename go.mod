@@ -1,6 +1,6 @@
 module github.com/themakers/cage
 
-go 1.25
+go 1.24
 
 require (
 	filippo.io/age v1.3.1

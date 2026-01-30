@@ -52,7 +52,7 @@
 
             dontUseCgo = true;
 
-            go = pkgs.go_1_25;
+            go = pkgs.go_1_24;
 
             meta = with pkgs.lib; {
               description = "Minimal SSH-based secrets manager (age + existing SSH Ed25519 keys), fully static";
@@ -75,7 +75,7 @@
         in {
           default = pkgs.mkShell {
             packages = [
-              pkgs.go
+              pkgs.go_1_24
               pkgs.gopls
               pkgs.golangci-lint
             ];
