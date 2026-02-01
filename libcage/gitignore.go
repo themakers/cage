@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+// TODO: match exact lines and create if not exists
+// *
+// !*/
+// !/.gitignore
+
 type GitignoreStatus struct {
 	Path          string
 	Exists        bool

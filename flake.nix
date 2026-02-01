@@ -55,7 +55,7 @@
             go = pkgs.go_1_24;
 
             meta = with pkgs.lib; {
-              description = "Minimal SSH-based secrets manager (age + existing SSH Ed25519 keys), fully static";
+              description = "Minimal SSH-based secrets manager (age + SSH Ed25519 keys)";
               platforms = platforms.unix;
             };
           };

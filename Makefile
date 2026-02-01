@@ -4,11 +4,11 @@ default: help
 
 .PHONY:
 build:  ## Build static executable
-	CGO_ENABLED=0 go build -tags osusergo,netgo -ldflags '-extldflags "-static"'
+	CGO_ENABLED=0 go build -tags=osusergo,netgo -ldflags='-extldflags="-static"'
 
 .PHONY:
 install:  ## Build static executable and install it in $GOBIN
-	CGO_ENABLED=0 go install -tags osusergo,netgo -ldflags '-extldflags "-static"'
+	CGO_ENABLED=0 go install -tags=osusergo,netgo -ldflags='-extldflags="-static"'
 
 .PHONY:
 flake:  ## Build nix flake
