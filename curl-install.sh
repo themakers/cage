@@ -36,7 +36,7 @@ install_go() {
 
   info "installing via go install"
 
-  CGO_ENABLED=0 go install -tags netgo -ldflags '-extldflags "-static"' "${REPO_URL}@latest"
+  CGO_ENABLED=0 go install -tags netgo -ldflags '-extldflags "-static"' "github.com/themakers/cage@latest"
 
   info "installed to $(go env GOPATH)/bin/${BIN_NAME}"
 }

@@ -29,9 +29,9 @@ It encrypts `.env` files and binary blobs, keeps ciphertexts in `.cage/`, and le
 ## Install (one-liner)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/themakers/cage/install.sh | bash -s -- install-go
+curl -fsSL https://raw.githubusercontent.com/themakers/cage/refs/heads/master/curl-install.sh | bash -s -- install-go
 # or
-curl -fsSL https://raw.githubusercontent.com/themakers/cage/install.sh | bash -s -- install-flake
+curl -fsSL https://raw.githubusercontent.com/themakers/cage/refs/heads/master/curl-install.sh | bash -s -- install-flake
 ```
 
 ---
