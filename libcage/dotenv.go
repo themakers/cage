@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+
+	"github.com/direnv/direnv/v2/pkg/dotenv"
 )
 
-// ParseDotenv parses a minimal .env format (KEY=VALUE lines, optional leading 'export').
+// ParseDotenvGPT parses a minimal .env format (KEY=VALUE lines, optional leading 'export').
 // It is intentionally strict about key names to catch typos early.
-func ParseDotenv(b []byte) (map[string]string, error) {
+func ParseDotenvGPT(b []byte) (map[string]string, error) {
 	out := map[string]string{}
 	lines := bytes.Split(b, []byte("\n"))
 	for i, raw := range lines {
@@ -37,4 +39,8 @@ func ParseDotenv(b []byte) (map[string]string, error) {
 		out[k] = v
 	}
 	return out, nil
+}
+
+func ParseDotenv(b []byte) (map[string]string, error) {
+	return dotenv.Parse(string(b))
 }

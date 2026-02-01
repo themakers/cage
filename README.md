@@ -3,75 +3,107 @@
 GPT-wibecoded concept
 Hands off production! (…for now)
 ```
+---
 
-# cage — Minimal SSH-based secrets manager
+# cage
 
-`cage` is a lightweight, transparent secret manager that encrypts files using your existing **SSH Ed25519 keys** and the modern [age](https://github.com/FiloSottile/age) encryption scheme.
+**cage** is a minimal, file-centric secrets manager built on top of **age** and **SSH keys**.
+
+It encrypts `.env` files and binary blobs, keeps ciphertexts in `.cage/`, and lets you **run commands with secrets without committing or exporting them**.
 
 ---
 
-💡 **Philosophy:** simple, auditable, and secure by default — *just secrets under your SSH control.*
+## Core ideas
 
-## Features
+* 🔐 Encryption via **age + SSH public keys**
+* 📁 Plaintext secrets live anywhere in the repo, ciphertexts live in `.cage/`
+* 🧩 Two secret types:
 
-- 🔐 **Strong crypto** — X25519 + ChaCha20-Poly1305 via `age`
-- 🪶 **Uses your SSH keys** — no new key infrastructure or GPG mess
-- 🧩 **Declarative config** — `.cage.yaml` defines environments and recipients
-- ⚡ **One blob per file** — no ciphertext duplication across recipients
-- 🧱 **Git-friendly** — deterministic YAML output, safe to commit
-- 🧰 **Simple CLI**
-  - `cage encrypt` — encrypt listed files
-  - `cage decrypt` — decrypt all `.cage` files for your SSH key
-  - `cage dump <env>` — stream decrypted environment files to stdout
-- 🧑‍💻 **CI/CD ready** — ideal for self-hosted, GitOps, and minimal workflows
+    * `*.env` — dotenv files
+    * everything else — binary blobs
+* 🧠 Access control defined declaratively in `.cage/cage.yaml`
+* 🚫 No agents, servers, vaults, or background daemons
 
-## Example
+---
+
+## Install (one-liner)
 
 ```bash
-# Encrypt secrets for all environments
-cage encrypt
-
-# Decrypt locally with your SSH key
-cage decrypt
-
-# Export merged plaintext for CI
-cage dump dev-local > .env
-
-# Or even
-go run github.com/themakers/cage@latest dump dev-local
-````
-
-## `.cage.yaml`:
-```yaml
-recipients:
-  john:
-    - ssh-ed25519 AAAAC3Nza... easy@peasy
-    - ssh-ed25519 AAAAC3Nza... bob@alice
-  june:
-    - ssh-ed25519 AAAAC3Nza... hello@kitty
-
-envs:
-  prod:
-    files:
-      - s3.prod.env
-      - telegram-bot.env
-    recipients:
-      - john
-  dev-local:
-    files:
-      - s3.mino.env
-    recipients:
-      - john
-      - june
+curl -fsSL https://raw.githubusercontent.com/themakers/cage/install.sh | bash -s -- install-go
+# or
+curl -fsSL https://raw.githubusercontent.com/themakers/cage/install.sh | bash -s -- install-flake
 ```
 
-## Encrypted `*.cage` file
+---
 
-```yaml
-cipher:
-  payload: <base64 of age ciphertext>
-  recipients:
-    - ssh-ed25519 AAAAC3Nza... hello@kitty
-    - ssh-ed25519 AAAAC3Nza... bob@alice
-    - ssh-ed25519 AAAAC3Nza... easy@peasy
+## Quick start
+
+```bash
+cage init              # create .cage/cage.yaml
+cage encrypt           # encrypt all secrets
+cage decrypt           # decrypt all secrets (if you have keys)
 ```
+
+---
+
+## Run with secrets (no export)
+
+```bash
+cage run @dev - npm start
+cage run secret.env - ./app
+```
+
+Secrets are loaded into the process environment only.
+
+---
+
+## Dump secrets
+
+```bash
+cage dump @dev                    # dump all .env secrets from env
+cage dump config.env              # dump a single secret
+cage dump ./file.bin.cage > file  # dump a blob (raw bytes)
+```
+
+(`.env` and blobs cannot be mixed in one dump)
+
+---
+
+## Raw mode (outside cage root)
+
+```bash
+cage decrypt -raw secrets/*.cage -o ./out
+cage run -raw ./config.env.cage - ./app
+```
+
+---
+
+## Configuration
+
+All access rules live in:
+
+```
+.cage/cage.yaml
+```
+
+You define:
+
+* where plaintext secrets live (`dirs`)
+* who can decrypt them (`recipients`)
+* which secrets belong to which environment (`envs`)
+
+Ciphertexts are stored in:
+
+```
+.cage/store/
+```
+
+---
+
+## What cage is *not*
+
+* ❌ Not a vault
+* ❌ Not a key manager
+* ❌ Not a secret sync tool
+
+It’s just **files + crypto + clear rules**.
