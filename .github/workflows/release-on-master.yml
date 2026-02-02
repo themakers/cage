@@ -35,7 +35,8 @@ jobs:
             chosen="$(printf '%s\n' "${tags}" | sort -V | tail -n 1)"
             echo "ref=${chosen}" >> "${GITHUB_OUTPUT}"
           else
-            echo "ref=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+            shortsha="$(git rev-parse --short=7 "${GITHUB_SHA}")"
+            echo "ref=${shortsha}" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Build (standard cross-compile)
