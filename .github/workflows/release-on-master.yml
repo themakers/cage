@@ -17,6 +17,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx
+
       - name: Set up Go from go.mod
         uses: actions/setup-go@v6
         with:
@@ -75,6 +80,9 @@ jobs:
             fi
 
             go build -tags=osusergo,netgo -ldflags="${ldflags}" -o "${out}" .
+          
+            echo "==> UPXing ${out}"
+            upx --best "${out}"
 
             sha256sum "${out}" > "${out}.sha256"
           done
