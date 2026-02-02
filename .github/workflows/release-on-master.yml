@@ -19,7 +19,9 @@ jobs:
 
       - name: Install UPX
         run: |
+          sudo apt-get update
           sudo apt-get install -y upx
+          upx --version
 
       - name: Set up Go from go.mod
         uses: actions/setup-go@v6
@@ -82,7 +84,7 @@ jobs:
           
             if [[ "${GOOS}" != "darwin" && ! ( "${GOOS}" == "windows" && "${GOARCH}" == "arm64" ) ]]; then
               echo "==> UPXing ${out}"
-              upx "$out"
+              upx --brute "$out"
             fi
 
             sha256sum "${out}" > "${out}.sha256"
