@@ -17,10 +17,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install UPX
+      - name: Install latest UPX from GitHub Releases
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y upx
+          set -euo pipefail
+          
+          sudo apt-get install -y jq
+
+          api="https://api.github.com/repos/upx/upx/releases/latest"  # latest release endpoint :contentReference[oaicite:2]{index=2}
+
+          url="$(
+            curl -fsSL "$api" \
+            | jq -r '.assets[].browser_download_url
+                    | select(test("upx-.*-amd64_linux\\.tar\\.xz$"))' \
+            | head -n 1
+          )"
+
+          test -n "$url" || { echo "Could not find linux amd64 UPX asset in latest release"; exit 1; }
+
+          curl -fsSL "$url" -o /tmp/upx.tar.xz
+          tar -xJf /tmp/upx.tar.xz -C /tmp
+          sudo install -m 0755 /tmp/upx-*/upx /usr/local/bin/upx
+
           upx --version
 
       - name: Set up Go from go.mod
