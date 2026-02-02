@@ -100,7 +100,7 @@ jobs:
 
             go build -tags=osusergo,netgo -ldflags="${ldflags}" -o "${out}" .
           
-            if [[ "${GOOS}" != "darwin" && ! ( "${GOOS}" == "windows" && "${GOARCH}" == "arm64" ) ]]; then
+            if [[ ! ( "${GOOS}" == "windows" && "${GOARCH}" == "arm64" ) ]]; then
               echo "==> UPXing ${out}"
               upx --brute "$out"
             fi
