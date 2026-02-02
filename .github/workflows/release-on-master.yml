@@ -82,7 +82,7 @@ jobs:
           
             if [[ "${GOOS}" != "darwin" ]]; then
               echo "==> UPXing ${out}"
-              upx --best "$out"
+              upx "$out"
             fi
 
             sha256sum "${out}" > "${out}.sha256"
