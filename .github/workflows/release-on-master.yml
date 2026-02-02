@@ -1,0 +1,145 @@
+name: Release on master
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ""
+            static: true
+
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            ext: ""
+            static: true
+
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: 386
+            ext: ""
+            static: true
+
+          - runner: macos-latest
+            goos: darwin
+            goarch: amd64
+            ext: ""
+            static: false
+
+          - runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            ext: ""
+            static: false
+
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: ".exe"
+            static: false
+
+          - runner: windows-latest
+            goos: windows
+            goarch: arm64
+            ext: ".exe"
+            static: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go from go.mod
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          export CGO_ENABLED=0
+          export GOOS='${{ matrix.goos }}'
+          export GOARCH='${{ matrix.goarch }}'
+
+          out="dist/cage_${GOOS}_${GOARCH}${{ matrix.ext }}"
+
+          ldflags='-s -w'
+          if [[ '${{ matrix.static }}' == 'true' ]]; then
+            ldflags="${ldflags} -extldflags=-static"
+          fi
+
+          go build -tags=osusergo,netgo -ldflags="$ldflags" -o "$out" .
+
+          python - <<'PY'
+          import hashlib, pathlib
+          p = pathlib.Path(r"""'"$out"'" """.strip())
+          h = hashlib.sha256(p.read_bytes()).hexdigest()
+          p.with_suffix(p.suffix + ".sha256").write_text(h + "  " + p.name + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cage_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: |
+            dist/cage_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
+            dist/cage_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}.sha256
+          if-no-files-found: error
+
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: [build]
+
+    steps:
+      - name: Checkout (with tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute release ref (tag if present, else SHA)
+        id: rel
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          tags="$(git tag --points-at "${GITHUB_SHA}" || true)"
+
+          if [[ -n "${tags}" ]]; then
+            tag="$(printf '%s\n' "${tags}" | sort -V | tail -n 1)"
+            echo "tag_or_sha=${tag}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "tag_or_sha=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: dist
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.rel.outputs.tag_or_sha }}
+          name: ${{ steps.rel.outputs.tag_or_sha }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            dist/**/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

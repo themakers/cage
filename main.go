@@ -8,11 +8,18 @@ import (
     "strings"
 )
 
+// TODO: rm command
+// TODO: dump/decrypt -raw > add -merge
+// TODO: keep order of secrets in environment dump
 // TODO: -shred flag for encrypt
 // TODO: selective decrypt
 // TODO: status subcommand
 // TODO: hand rewrite
 // TODO: tui
+//
+// TODO: age
+// TODO: yubikey
+// TODO: tpm
 
 func main() {
     logger := newLogger()
