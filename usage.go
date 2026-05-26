@@ -6,7 +6,7 @@ import (
 )
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, `Usage:
+	fmt.Fprint(w, `Usage:
   cage [ -wd <cage-root> ] <command>
 
 Commands:
