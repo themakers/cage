@@ -1,19 +1,19 @@
 package libcage
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
 	"filippo.io/age"
 	"filippo.io/age/agessh"
 	"golang.org/x/crypto/ssh"
+
+	"github.com/themakers/cage/libssh/sshconfig"
 )
 
 type SSHIdentity struct {
@@ -139,46 +139,40 @@ func looksLikePrivateKeyPEM(s string) bool {
 	return strings.Contains(s, "BEGIN") && strings.Contains(s, "PRIVATE KEY")
 }
 
-var identityFileRe = regexp.MustCompile(`(?i)^\s*IdentityFile\s+(.+?)\s*$`)
-
 func identitiesFromSSHConfig(lg *slog.Logger) ([]SSHIdentity, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
 	cfgPath := filepath.Join(home, ".ssh", "config")
-	f, err := os.Open(cfgPath)
-	if err != nil {
+	if _, err := os.Stat(cfgPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	var paths []string
-	for scanner.Scan() {
-		line := scanner.Text()
-		if i := strings.IndexByte(line, '#'); i >= 0 {
-			line = line[:i]
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		m := identityFileRe.FindStringSubmatch(line)
-		if len(m) != 2 {
-			continue
-		}
-		p := strings.Trim(m[1], " \t\"'")
-		if p == "" {
-			continue
-		}
-		paths = append(paths, expandTilde(p, home))
-	}
-	if err := scanner.Err(); err != nil {
+	// Единый парсер: libssh/sshconfig — честная семантика OpenSSH,
+	// включая Include, Host-паттерны и token expansion.
+	cfg, err := sshconfig.Load(cfgPath)
+	if err != nil {
 		return nil, err
+	}
+
+	// IdentityFile накапливаются со всех Host-блоков; для discovery
+	// сканируем alias всех явных хостов + wildcard. Раскрытие ~/ и
+	// %%-токенов выполняет sshconfig.Resolve.
+	aliases := append([]string{"*"}, cfg.Hosts()...)
+	seen := map[string]struct{}{}
+	var paths []string
+	for _, alias := range aliases {
+		for _, p := range cfg.Resolve(alias).IdentityFiles {
+			if _, dup := seen[p]; dup {
+				continue
+			}
+			seen[p] = struct{}{}
+			paths = append(paths, p)
+		}
 	}
 
 	var out []SSHIdentity
