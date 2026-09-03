@@ -586,10 +586,9 @@ func (c *Client) markDead(err error) {
 	go c.reconnectLoop()
 }
 
-// reconnectLoop — переподключение с экспоненциальным backoff (1с→30с).
+// reconnectLoop — переподключение с фиксированным интервалом (1с между попытками).
 func (c *Client) reconnectLoop() {
 	attempt := 0
-	backoff := time.Second
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -613,9 +612,8 @@ func (c *Client) reconnectLoop() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case <-time.After(backoff):
+		case <-time.After(time.Second):
 		}
-		backoff = minDur(backoff*2, 30*time.Second)
 	}
 }
 
@@ -787,9 +785,3 @@ func splitUserHostPort(s string) (host string, port int, user string) {
 	return s, 0, user
 }
 
-func minDur(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
-}
