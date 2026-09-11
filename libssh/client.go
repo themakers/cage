@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -420,7 +421,7 @@ func (c *Client) hopClientConfig(host string, port int, user string) (*ssh.Clien
 	}
 	return &ssh.ClientConfig{
 		User:            r.user,
-		Auth:            methods,
+		AuthCallback:    authCallback(methods, c.logger),
 		HostKeyCallback: hkcb,
 		Timeout:         c.r.connectTimeout,
 	}, r, nil
@@ -462,15 +463,44 @@ func (c *Client) clientConfig() (*ssh.ClientConfig, string, error) {
 	}
 	return &ssh.ClientConfig{
 		User:            c.r.user,
-		Auth:            methods,
+		AuthCallback:    authCallback(methods, c.logger),
 		HostKeyCallback: hkcb,
 		Timeout:         c.r.connectTimeout,
 	}, net.JoinHostPort(c.r.hostname, strconv.Itoa(c.r.port)), nil
 }
 
-// authMethodsFor — ssh-agent + IdentityFile'ы для resolved-параметров.
-func authMethodsFor(r resolved, lg *slog.Logger) ([]ssh.AuthMethod, error) {
-	var methods []ssh.AuthMethod
+type authAttempt struct {
+	method      ssh.AuthMethod
+	fingerprint string
+}
+
+// authCallback пробует каждый ключ один раз, даже если предыдущий не смог
+// подписать запрос. Обычный Auth пропускает остальные методы publickey после ошибки.
+func authCallback(methods []authAttempt, lg *slog.Logger) ssh.ClientAuthCallback {
+	next, failures := 0, 0
+	return func(ctx *ssh.ClientAuthContext) (ssh.AuthMethod, error) {
+		if next > 0 && len(ctx.TriedMethods) > failures && lg != nil {
+			lg.Warn("libssh: public key authentication failed", "key", methods[next-1].fingerprint)
+		}
+		failures = len(ctx.TriedMethods)
+		if next == len(methods) || !slices.Contains(ctx.AllowedMethods, "publickey") {
+			return nil, nil
+		}
+		method := methods[next].method
+		next++
+		return method, nil
+	}
+}
+
+// authMethodsFor — отдельная попытка на каждый ключ ssh-agent и IdentityFile.
+func authMethodsFor(r resolved, lg *slog.Logger) ([]authAttempt, error) {
+	var methods []authAttempt
+	addSigner := func(signer ssh.Signer) {
+		methods = append(methods, authAttempt{
+			method:      ssh.PublicKeys(signer),
+			fingerprint: ssh.FingerprintSHA256(signer.PublicKey()),
+		})
+	}
 
 	sock := r.agentSocket
 	if sock == "" {
@@ -479,13 +509,22 @@ func authMethodsFor(r resolved, lg *slog.Logger) ([]ssh.AuthMethod, error) {
 	if sock != "" && sock != "none" {
 		if conn, err := net.Dial("unix", sock); err == nil {
 			agentClient := agent.NewClient(conn)
-			methods = append(methods, ssh.PublicKeysCallback(agentClient.Signers))
+			signers, err := agentClient.Signers()
+			if err != nil {
+				_ = conn.Close()
+				if lg != nil {
+					lg.Warn("libssh: agent identities unavailable", "socket", sock, "err", err)
+				}
+			} else {
+				for _, signer := range signers {
+					addSigner(signer)
+				}
+			}
 		} else if lg != nil {
 			lg.Debug("libssh: agent socket unavailable", "socket", sock, "err", err)
 		}
 	}
 
-	var signers []ssh.Signer
 	for _, path := range r.identityFiles {
 		signer, err := LoadIdentityFile(path)
 		if err != nil {
@@ -494,12 +533,7 @@ func authMethodsFor(r resolved, lg *slog.Logger) ([]ssh.AuthMethod, error) {
 			}
 			continue
 		}
-		signers = append(signers, signer)
-	}
-	if len(signers) > 0 {
-		methods = append(methods, ssh.PublicKeysCallback(func() ([]ssh.Signer, error) {
-			return signers, nil
-		}))
+		addSigner(signer)
 	}
 	return methods, nil
 }
