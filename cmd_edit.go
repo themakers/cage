@@ -296,6 +296,7 @@ func cmdRm(logger *slog.Logger, wd string, args []string) error {
 	fs := flag.NewFlagSet("rm", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	file := fs.Bool("file", false, "remove the whole secret (plaintext and store file)")
+	commented := fs.Bool("commented", false, "remove commented-out assignments of KEY instead of the active one")
 	noEncrypt := fs.Bool("no-encrypt", false, "do not run encrypt after the change")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -327,13 +328,17 @@ func cmdRm(logger *slog.Logger, wd string, args []string) error {
 	}
 	removed := false
 	if err := c.EditEnv(ref, func(f *libcage.DotenvFile) error {
-		removed = f.Remove(key)
+		if *commented {
+			removed = f.RemoveCommented(key)
+		} else {
+			removed = f.Remove(key)
+		}
 		return nil
 	}); err != nil {
 		return err
 	}
 	if !removed {
-		return fmt.Errorf("rm: %s has no active %s", ref, key)
+		return fmt.Errorf("rm: %s has no such %s", ref, key)
 	}
 	fmt.Printf("removed %s:%s\n", ref, key)
 	return finish(c, *noEncrypt, ref)

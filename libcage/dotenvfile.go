@@ -149,6 +149,21 @@ func (f *DotenvFile) Remove(key string) bool {
 	return removed
 }
 
+// RemoveCommented deletes all commented-out assignments of key.
+func (f *DotenvFile) RemoveCommented(key string) bool {
+	var out []DotenvLine
+	removed := false
+	for _, l := range f.Lines {
+		if l.Key == key && l.Commented {
+			removed = true
+			continue
+		}
+		out = append(out, l)
+	}
+	f.Lines = out
+	return removed
+}
+
 // Disable comments out the effective assignment of key.
 func (f *DotenvFile) Disable(key string) error {
 	i := f.active(key)

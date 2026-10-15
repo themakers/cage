@@ -74,7 +74,8 @@ encrypted — add it to cage.yaml (plain YAML, no values inside) first.
 - `cage mv <ref>:KEY <ref2>[:NEWKEY]` — move/rename a variable;
   `cage mv <ref> <newref>` — rename a whole secret (update cage.yaml to the
   new name before encrypt).
-- `cage rm <ref>:KEY` — delete a variable; `cage rm -file <ref>` — delete a
+- `cage rm <ref>:KEY` — delete a variable (`-commented` — its commented-out
+  copies); `cage rm -file <ref>` — delete a
   whole secret (remove it from cage.yaml first).
 - `cage comment -text "…" <ref>:KEY`, `-disable` (comment out), `-enable`.
 
