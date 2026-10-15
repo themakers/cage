@@ -171,7 +171,7 @@ func cmdImport(logger *slog.Logger, wd string, args []string) error {
 	}
 	var out bytes.Buffer
 	//> stdout is data for cage (never shown); stderr is diagnostics, masked.
-	if err := runCommand(expandArgVars(cmdArgs, env), mergeEnv(os.Environ(), env), &out, libcage.MaskPatterns(values)); err != nil {
+	if err := runCommand(expandArgVars(cmdArgs, env), mergeEnv(os.Environ(), env), &out, false, libcage.MaskPatterns(values)); err != nil {
 		return err
 	}
 	got, err := libcage.ParseDotenv(out.Bytes())

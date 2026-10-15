@@ -62,13 +62,13 @@ func cmdRun(logger *slog.Logger, wd string, args []string) error {
 	if !*noMask && !interactive() {
 		patterns = libcage.MaskPatterns(values)
 	}
-	return runCommand(cmdArgs, mergeEnv(os.Environ(), m), os.Stdout, patterns)
+	return runCommand(cmdArgs, mergeEnv(os.Environ(), m), os.Stdout, true, patterns)
 }
 
-// runCommand runs the command with env; stdout goes to out, stderr to
-// os.Stderr, both masked by patterns (if any). The exit code of the command
-// becomes the exit code of cage.
-func runCommand(cmdArgs, env []string, out io.Writer, patterns [][]byte) error {
+// runCommand runs the command with env; stdout goes to out (masked only if
+// maskOut: it may be data for cage), stderr to os.Stderr masked by patterns
+// (if any). The exit code of the command becomes the exit code of cage.
+func runCommand(cmdArgs, env []string, out io.Writer, maskOut bool, patterns [][]byte) error {
 	ex := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	ex.Env = env
 	ex.Stdin = os.Stdin
@@ -81,7 +81,10 @@ func runCommand(cmdArgs, env []string, out io.Writer, patterns [][]byte) error {
 		closers = append(closers, mw)
 		return mw
 	}
-	ex.Stdout = wrap(out)
+	ex.Stdout = out
+	if maskOut {
+		ex.Stdout = wrap(out)
+	}
 	ex.Stderr = wrap(os.Stderr)
 	err := ex.Run()
 	for _, c := range closers {
