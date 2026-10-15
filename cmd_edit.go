@@ -344,6 +344,32 @@ func cmdRm(logger *slog.Logger, wd string, args []string) error {
 	return finish(c, *noEncrypt, ref)
 }
 
+func cmdResolve(logger *slog.Logger, wd string, args []string) error {
+	fs := flag.NewFlagSet("resolve", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	local := fs.Bool("local", false, "keep your side in every conflict")
+	store := fs.Bool("store", false, "keep the store side in every conflict")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 || *local == *store {
+		return fmt.Errorf("resolve: usage: cage resolve (-local | -store) <ref>")
+	}
+	ref, err := libcage.ParseSecretRef(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	c, err := rootCage(logger, wd)
+	if err != nil {
+		return err
+	}
+	if err := c.Resolve(ref, *local); err != nil {
+		return err
+	}
+	fmt.Printf("resolved %s\n", ref)
+	return nil
+}
+
 func cmdComment(logger *slog.Logger, wd string, args []string) error {
 	fs := flag.NewFlagSet("comment", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)

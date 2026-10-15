@@ -42,5 +42,13 @@ func ParseDotenvGPT(b []byte) (map[string]string, error) {
 }
 
 func ParseDotenv(b []byte) (map[string]string, error) {
-	return dotenv.Parse(string(b))
+	//> Whole-line comments are dropped first: the underlying parser takes a
+	//> comment like `# without "="` for an unclosed quoted value.
+	lines := strings.Split(string(b), "\n")
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "#") {
+			lines[i] = ""
+		}
+	}
+	return dotenv.Parse(strings.Join(lines, "\n"))
 }

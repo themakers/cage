@@ -20,38 +20,52 @@ import (
 // missing plaintext is restored from the store first. Values never leave
 // the process: callers get names only.
 
-// ReadPlainForEdit returns the plaintext of ref: the plaintext file, else
-// the decrypted store, else empty (new secret).
+// ReadPlainForEdit returns the plaintext of ref for a local change: the
+// secret must not be behind or diverged from the store; a missing plaintext
+// is restored from the store (and the base recorded); nil — a new secret.
 func (c *Cage) ReadPlainForEdit(ref SecretRef) ([]byte, error) {
-	p, err := c.PlaintextPath(ref)
+	in, err := c.syncState(ref)
 	if err != nil {
 		return nil, err
 	}
-	if b, ok, err := ReadFileIfExists(p); err != nil {
-		return nil, err
-	} else if ok {
-		return b, nil
-	}
-	storePath, err := c.StoreSecretPath(ref)
-	if err != nil {
+	if err := requireEditable(ref, in); err != nil {
 		return nil, err
 	}
-	b, ok, err := ReadFileIfExists(storePath)
-	if err != nil || !ok {
-		return nil, err
+	if in.State != SyncNew {
+		return in.Plain, nil
 	}
-	s, err := ParseSecretV1(b)
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", storePath, err)
-	}
-	plain, err := c.decryptSecretPayload(s.Secret.Payload)
+	plain, err := c.decryptSecret(in.S.File)
 	if isNotRecipient(err) {
 		return nil, fmt.Errorf("%s: not a recipient of this secret", ref)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("decrypt %s: %w", storePath, err)
+		return nil, fmt.Errorf("decrypt %s: %w", ref, err)
+	}
+	if err := c.WritePlain(ref, plain); err != nil {
+		return nil, err
+	}
+	if err := c.setBase(ref, in.S); err != nil {
+		return nil, err
 	}
 	return plain, nil
+}
+
+// ReplacePlain overwrites a secret as a deliberate replacement of the
+// current store version, even one this identity can not read (rotating
+// another engineer's credentials): the current store version becomes the
+// base, so the next encrypt publishes the replacement on top of it.
+func (c *Cage) ReplacePlain(ref SecretRef, data []byte) error {
+	s, err := c.readStoreVersion(ref)
+	if err != nil {
+		return err
+	}
+	if err := c.WritePlain(ref, data); err != nil {
+		return err
+	}
+	if s == nil {
+		return c.removeBase(ref)
+	}
+	return c.setBase(ref, s)
 }
 
 // WritePlain writes the plaintext of ref (0600).
@@ -149,7 +163,8 @@ func (c *Cage) MoveSecret(src, dst SecretRef) error {
 	return c.RemoveSecretFiles(src)
 }
 
-// RemoveSecretFiles deletes the plaintext and the store file of ref.
+// RemoveSecretFiles deletes the plaintext, the store file and the base of
+// ref.
 func (c *Cage) RemoveSecretFiles(ref SecretRef) error {
 	p, err := c.PlaintextPath(ref)
 	if err != nil {
@@ -159,12 +174,12 @@ func (c *Cage) RemoveSecretFiles(ref SecretRef) error {
 	if err != nil {
 		return err
 	}
-	for _, f := range []string{p, s} {
+	for _, f := range []string{p, p + ".store", s} {
 		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
-	return nil
+	return c.removeBase(ref)
 }
 
 // ReferencedBy lists envs of cage.yaml that include ref.

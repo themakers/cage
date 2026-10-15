@@ -115,7 +115,13 @@ func cmdStatus(logger *slog.Logger, wd string, args []string) error {
 		if !f.Readable {
 			r = "NOT READABLE"
 		}
-		fmt.Printf("%-48s %-15s %-13s recipients: %s\n", f.Ref, f.State, r, strings.Join(f.Recipients, ","))
+		fmt.Printf("%-48s %-11s %-13s recipients: %s\n", f.Ref, f.State, r, strings.Join(f.Recipients, ","))
+		if f.Hint != "" {
+			fmt.Printf("    → %s\n", f.Hint)
+		}
+	}
+	for _, e := range rep.StaleEnvs {
+		fmt.Printf("compiled env out of date: @%s — `cage encrypt` rebuilds it\n", e)
 	}
 	for _, s := range rep.NotInConfig {
 		fmt.Printf("plaintext not in any env: %s\n", s)

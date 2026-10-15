@@ -17,10 +17,14 @@ type SecretV1 struct {
 }
 
 type SecretBody struct {
-	Name            string   `yaml:"name"`
-	PlaintextSHA256 string   `yaml:"plaintext_sha256,omitempty"`
-	Payload         string   `yaml:"payload"`
-	Recipients      []string `yaml:"recipients"`
+	Name            string `yaml:"name"`
+	PlaintextSHA256 string `yaml:"plaintext_sha256,omitempty"`
+	// History — sha256 of previous plaintext versions, newest first (at most
+	// HistoryLimit). Lets a working copy tell "store is newer than my base"
+	// from "store diverged from my base" without git.
+	History    []string `yaml:"history,omitempty"`
+	Payload    string   `yaml:"payload"`
+	Recipients []string `yaml:"recipients"`
 }
 
 type EnvironmentV1 struct {
@@ -93,7 +97,24 @@ func ReadKind(b []byte) (string, error) {
 	return hdr.Kind, nil
 }
 
+// HistoryLimit — how many previous versions a store file remembers.
+const HistoryLimit = 100
+
+// hasGitConflictMarkers reports lines git leaves in a file after a failed
+// merge.
+func hasGitConflictMarkers(b []byte) bool {
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "<<<<<<< ") || strings.HasPrefix(line, ">>>>>>> ") || line == "=======" || strings.HasPrefix(line, "<<<<<<<\t") {
+			return true
+		}
+	}
+	return false
+}
+
 func ParseSecretV1(b []byte) (*SecretV1, error) {
+	if hasGitConflictMarkers(b) {
+		return nil, fmt.Errorf("git merge conflict in an encrypted file (ciphertext can not be merged): take one side (`git checkout --theirs <file>`), then run `cage decrypt` — it merges your local changes")
+	}
 	var s SecretV1
 	if err := yaml.Unmarshal(b, &s); err != nil {
 		return nil, err
@@ -128,14 +149,24 @@ func MarshalSecretStable(s *SecretV1) ([]byte, error) {
 
 	root := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{mapNode(
 		scalar("kind"), scalar("secret/v1"),
-		scalar("secret"), mapNode(
-			scalar("name"), scalar(s2.Secret.Name),
-			scalar("plaintext_sha256"), scalar(s2.Secret.PlaintextSHA256),
-			scalar("payload"), literal(s2.Secret.Payload),
-			scalar("recipients"), seqStrings(s2.Secret.Recipients),
-		),
+		scalar("secret"), secretBodyNode(s2.Secret),
 	)}}
 	return encodeYAML(root)
+}
+
+func secretBodyNode(b SecretBody) *yaml.Node {
+	kv := []*yaml.Node{
+		scalar("name"), scalar(b.Name),
+		scalar("plaintext_sha256"), scalar(b.PlaintextSHA256),
+	}
+	if len(b.History) > 0 {
+		kv = append(kv, scalar("history"), seqStrings(b.History))
+	}
+	kv = append(kv,
+		scalar("payload"), literal(b.Payload),
+		scalar("recipients"), seqStrings(b.Recipients),
+	)
+	return mapNode(kv...)
 }
 
 func MarshalEnvironmentStable(e *EnvironmentV1) ([]byte, error) {
@@ -148,14 +179,12 @@ func MarshalEnvironmentStable(e *EnvironmentV1) ([]byte, error) {
 		s.Kind = "secret/v1"
 		s.Secret.Recipients = NormalizeRecipients(s.Secret.Recipients)
 
+		//> Compiled envs are for consumers: no history.
+		body := s.Secret
+		body.History = nil
 		item := mapNode(
 			scalar("kind"), scalar("secret/v1"),
-			scalar("secret"), mapNode(
-				scalar("name"), scalar(s.Secret.Name),
-				scalar("plaintext_sha256"), scalar(s.Secret.PlaintextSHA256),
-				scalar("payload"), literal(s.Secret.Payload),
-				scalar("recipients"), seqStrings(s.Secret.Recipients),
-			),
+			scalar("secret"), secretBodyNode(body),
 		)
 		secretsNode.Content = append(secretsNode.Content, item)
 	}

@@ -235,7 +235,7 @@ func (c *Cage) PlaintextRefs() []SecretRef {
 			continue
 		}
 		for _, e := range ents {
-			if e.IsDir() || e.Name() == ".gitignore" || strings.HasPrefix(e.Name(), ".") {
+			if e.IsDir() || e.Name() == ".gitignore" || strings.HasPrefix(e.Name(), ".") || strings.HasSuffix(e.Name(), ".store") {
 				continue
 			}
 			out = append(out, SecretRef{Dir: alias, Name: e.Name()})
@@ -270,7 +270,7 @@ func (c *Cage) readForInspect(ref SecretRef) ([]byte, string, error) {
 	if err != nil {
 		return nil, "store", err
 	}
-	plain, err := c.decryptSecretPayload(s.Secret.Payload)
+	plain, err := c.decryptSecret(s)
 	return plain, "store", err
 }
 
@@ -394,11 +394,32 @@ func blobKind(b []byte) string {
 
 // StatusFile — one secret: plaintext vs store, readability, consumers.
 type StatusFile struct {
-	Ref        string   `json:"ref"`
-	State      string   `json:"state"` // in-sync | changed | plaintext-only | store-only | missing
-	Readable   bool     `json:"readable"`
-	Envs       []string `json:"envs,omitempty"`
-	Recipients []string `json:"recipients,omitempty"`
+	Ref string `json:"ref"`
+	// State — SyncState: in-sync | modified | outdated | diverged | conflict |
+	// new | local-only | missing; foreign — encrypted for other recipients.
+	State           string   `json:"state"`
+	Hint            string   `json:"hint,omitempty"`
+	RecipientsStale bool     `json:"recipients_stale,omitempty"`
+	Readable        bool     `json:"readable"`
+	Envs            []string `json:"envs,omitempty"`
+	Recipients      []string `json:"recipients,omitempty"`
+}
+
+func syncHint(ref SecretRef, in syncInfo) string {
+	switch in.State {
+	case SyncModified, SyncLocalOnly:
+		return "local changes — `cage encrypt`, then commit"
+	case SyncOutdated, SyncNew:
+		return "store is newer — `cage decrypt`"
+	case SyncDiverged:
+		if in.Older {
+			return "store is older than your copy (revert/branch switch?) — `cage decrypt` marks the differences"
+		}
+		return "changed locally and in store — `cage decrypt` merges"
+	case SyncConflict:
+		return "unresolved conflict — edit the file or `cage resolve " + ref.String() + " -local|-store`"
+	}
+	return ""
 }
 
 type StatusConflict struct {
@@ -414,6 +435,9 @@ type StatusReport struct {
 	// StoreOrphans — store files that no env references.
 	StoreOrphans []string         `json:"store_orphans,omitempty"`
 	Conflicts    []StatusConflict `json:"conflicts,omitempty"`
+	// StaleEnvs — compiled envs that differ from their store files (e.g.
+	// after a git merge) — `cage encrypt` rebuilds them.
+	StaleEnvs []string `json:"stale_envs,omitempty"`
 }
 
 // Status compares plaintext with the store and finds variable collisions
@@ -437,6 +461,19 @@ func (c *Cage) Status() (StatusReport, error) {
 	}
 
 	var rep StatusReport
+	if _, envRefs, err := c.buildRecipientPlan(); err == nil {
+		for envName, refs := range envRefs {
+			p, _ := c.StoreEnvPath(envName)
+			want, err := c.compileEnv(envName, refs)
+			if err != nil {
+				continue
+			}
+			if got, ok, _ := ReadFileIfExists(p); !ok || !BytesEqual(got, want) {
+				rep.StaleEnvs = append(rep.StaleEnvs, envName)
+			}
+		}
+		sort.Strings(rep.StaleEnvs)
+	}
 	inConfig := map[SecretRef]bool{}
 	for _, ref := range c.AllRefs() {
 		inConfig[ref] = true
@@ -457,27 +494,27 @@ func (c *Cage) Status() (StatusReport, error) {
 		}
 		sort.Strings(sf.Recipients)
 
-		pp, _ := c.PlaintextPath(ref)
-		sp, _ := c.StoreSecretPath(ref)
-		plain, hasPlain, _ := ReadFileIfExists(pp)
-		storeB, hasStore, _ := ReadFileIfExists(sp)
-		switch {
-		case hasPlain && hasStore:
-			sf.State = "changed"
-			if s, err := ParseSecretV1(storeB); err == nil && s.Secret.PlaintextSHA256 == SHA256Hex(plain) {
-				sf.State = "in-sync"
+		in, err := c.syncState(ref)
+		if err != nil {
+			sf.State, sf.Hint = "error", err.Error()
+			rep.Files = append(rep.Files, sf)
+			continue
+		}
+		sf.State = string(in.State)
+		sf.Readable = in.Plain != nil
+		if in.S != nil && in.Plain == nil {
+			_, err := c.decryptSecret(in.S.File)
+			sf.Readable = err == nil
+		}
+		sf.Hint = syncHint(ref, in)
+		if in.State == SyncNew && !sf.Readable {
+			sf.State, sf.Hint = "foreign", ""
+		}
+		if in.S != nil && !equalStringSlices(in.S.File.Secret.Recipients, NormalizeRecipients(recips[ref])) {
+			sf.RecipientsStale = true
+			if sf.Hint == "" {
+				sf.Hint = "recipients changed in cage.yaml — `cage encrypt` re-encrypts"
 			}
-			sf.Readable = true
-		case hasPlain:
-			sf.State, sf.Readable = "plaintext-only", true
-		case hasStore:
-			sf.State = "store-only"
-			if s, err := ParseSecretV1(storeB); err == nil {
-				_, err := c.decryptSecretPayload(s.Secret.Payload)
-				sf.Readable = err == nil
-			}
-		default:
-			sf.State = "missing"
 		}
 		rep.Files = append(rep.Files, sf)
 	}

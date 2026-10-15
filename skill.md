@@ -33,11 +33,11 @@ Secret values must never enter your context. Therefore:
 ## Look
 
 - `cage whoami` — which recipients of cage.yaml you are.
-- `cage status` — every secret: plaintext vs store (in-sync / changed /
-  plaintext-only / store-only), readable or not, envs, recipients; plaintext
-  files not in any env; variable collisions inside envs (they matter only
-  for envs that are run/dumped as a whole — envs may also just group
-  recipients).
+- `cage status` — every secret: sync state (in-sync, modified, outdated,
+  diverged, conflict, new, local-only) with a hint what to run, readable or
+  not, envs, recipients; plaintext files not in any env; compiled envs out
+  of date; variable collisions inside envs (they matter only for envs that
+  are run/dumped as a whole — envs may also just group recipients).
 - `cage inspect [refs|@env]` (no args — everything) — per variable: line,
   name (`#NAME` = commented out), comment above it, shape (empty, string,
   number, bool, uri, jwt, pem, ssh-public-key), length, charset and a
@@ -46,6 +46,33 @@ Secret values must never enter your context. Therefore:
   report mean equal values (`DUP:` lists the other places). Fingerprints are
   keyed per run: they cannot be compared across runs or brute-forced.
 - `-json` on all of them for machine-readable output.
+
+## Working together (plaintext ↔ store)
+
+cage remembers, per working copy, the store version your plaintext was last
+synchronized with (the base, in `.cage/local/`, git-ignored). So:
+
+- `cage decrypt` never loses local changes: store newer and your file
+  unchanged → updated; your file changed and store unchanged → kept; both
+  changed → merged line by line like git, overlapping changes get markers
+  `<<<<<<< local` / `=======` / `>>>>>>> store`. All secrets are processed;
+  then it exits with an error listing conflicts (variable names, no values).
+- `cage encrypt` (and every editing command) refuses, writing nothing, if
+  the store has changes you have not merged (`run cage decrypt first`) or a
+  file has conflict markers.
+- Conflicts: `cage resolve -local <ref>` or `-store <ref>` keeps one side in
+  every conflict of the secret (a human may edit the file instead). Binary
+  secrets are not merged: the store version is put next to the file as
+  `<name>.store`; resolve the same way.
+- Routine: `git pull` → `cage decrypt` → change → `cage encrypt` → commit,
+  push.
+- git conflict in a store file (two people encrypted the same secret):
+  `git checkout --theirs <that file>` (also for `.cage/store/envs/*`), then
+  `cage decrypt` (merges your change into theirs), `cage encrypt`, commit.
+- `run`/`dump` read the store: an unencrypted local change is not in effect;
+  others' changes are, right after `git pull`.
+- Plaintext dirs must be inside `.cage/`; cage rewrites `.cage/.gitignore`
+  on encrypt/decrypt to ignore them and `.cage/local/`.
 
 ## Change
 

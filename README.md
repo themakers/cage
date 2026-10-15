@@ -106,6 +106,29 @@ comments and order, validates the file and runs `encrypt`.
 
 ---
 
+## Working together
+
+Each working copy remembers the store version its plaintext came from (the
+base, `.cage/local/`, git-ignored), and every store file lists the hashes
+of its previous versions. With that:
+
+* `cage decrypt` updates files you did not change, keeps your changes when
+  the store did not change, and merges both line by line otherwise —
+  overlapping changes get git-style markers (`<<<<<<< local` … `>>>>>>> store`),
+  and the command fails after processing everything;
+* `cage encrypt` refuses (and writes nothing) while the store has changes
+  you have not merged, or a file has conflict markers — so nobody silently
+  reverts someone else's change;
+* `cage resolve -local|-store <ref>` settles a conflict;
+* a git conflict in a store file: `git checkout --theirs <file>`, then
+  `cage decrypt` merges your change, `cage encrypt`, commit;
+* revoking access: old versions stay in git history — rotate the secrets.
+
+Everyone in the team should use a cage version with this support: an older
+cage drops the version history from store files it rewrites.
+
+---
+
 ## Raw mode (outside cage root)
 
 ```bash
@@ -125,7 +148,8 @@ All access rules live in:
 
 You define:
 
-* where plaintext secrets live (`dirs`)
+* where plaintext secrets live (`dirs`, inside `.cage/`; cage keeps
+  `.cage/.gitignore` ignoring them)
 * who can decrypt them (`recipients`)
 * which secrets belong to which environment (`envs`)
 

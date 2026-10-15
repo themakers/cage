@@ -1,71 +1,55 @@
 package libcage
 
 import (
-	"bufio"
-	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
-// TODO: match exact lines and create if not exists
-// *
-// !*/
-// !/.gitignore
+const gitignoreHeader = "# Managed by cage — regenerated on encrypt/decrypt from cage.yaml dirs. Do not edit.\n"
 
-type GitignoreStatus struct {
-	Path          string
-	Exists        bool
-	IgnoresAll    bool
-	KeepsSelfOnly bool
-}
-
-// CheckGitignore inspects <dir>/.gitignore and returns a best-effort assessment.
-// Intended for warnings only.
-func CheckGitignore(dir string) (GitignoreStatus, error) {
-	p := filepath.Join(dir, ".gitignore")
-	st := GitignoreStatus{Path: p}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return st, nil
+// cageGitignore — content of .cage/.gitignore: local state and every
+// plaintext directory (nested ones are covered by their parents).
+func (c *Cage) cageGitignore() string {
+	dirs := []string{"local"}
+	for _, rel := range c.Cfg.Dirs {
+		if in, err := plaintextDirInCage(rel); err == nil {
+			dirs = append(dirs, in)
 		}
-		return st, err
 	}
-	st.Exists = true
-
-	ignoreAll := false
-	keepGitignore := false
-
-	scanner := bufio.NewScanner(strings.NewReader(string(b)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		// strip inline comments (best-effort; .gitignore doesn't have quoting)
-		if i := strings.IndexByte(line, '#'); i >= 0 {
-			line = strings.TrimSpace(line[:i])
-		}
-		if line == "" {
-			continue
-		}
-		switch line {
-		case "*", "/*", "**", "/**":
-			ignoreAll = true
-		}
-		if strings.HasPrefix(line, "!") {
-			v := strings.TrimSpace(strings.TrimPrefix(line, "!"))
-			if v == ".gitignore" || v == "/.gitignore" {
-				keepGitignore = true
+	sort.Strings(dirs)
+	var kept []string
+	for _, d := range dirs {
+		covered := false
+		for _, k := range kept {
+			if d == k || strings.HasPrefix(d, k+"/") {
+				covered = true
+				break
 			}
 		}
+		if !covered {
+			kept = append(kept, d)
+		}
 	}
-	if err := scanner.Err(); err != nil {
-		return st, err
+	var b strings.Builder
+	b.WriteString(gitignoreHeader)
+	for _, d := range kept {
+		b.WriteString("/" + d + "/\n")
 	}
+	return b.String()
+}
 
-	st.IgnoresAll = ignoreAll
-	st.KeepsSelfOnly = ignoreAll && keepGitignore
-	return st, nil
+// WriteGitignore rewrites .cage/.gitignore if its content changed.
+func (c *Cage) WriteGitignore() error {
+	p := filepath.Join(c.CageDir(), ".gitignore")
+	want := c.cageGitignore()
+	if b, err := os.ReadFile(p); err == nil && string(b) == want {
+		return nil
+	}
+	if err := AtomicWriteFile(p, []byte(want), 0o644); err != nil {
+		return err
+	}
+	c.Logger.Info("updated .cage/.gitignore")
+	return nil
 }

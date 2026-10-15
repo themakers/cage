@@ -152,7 +152,7 @@ func (c *Cage) dumpFromCageFile(path string) ([]dumpPart, error) {
 		if err != nil {
 			return nil, err
 		}
-		plain, err := c.decryptSecretPayload(s.Secret.Payload)
+		plain, err := c.decryptSecret(s)
 		if err != nil {
 			return nil, err
 		}
@@ -169,7 +169,7 @@ func (c *Cage) dumpFromCageFile(path string) ([]dumpPart, error) {
 				c.Logger.Debug("dump: skipping blob in environment file", "env_file", filepath.Base(path), "secret", name)
 				continue
 			}
-			plain, err := c.decryptSecretPayload(s.Secret.Payload)
+			plain, err := c.decryptSecret(&s)
 			if err != nil {
 				return nil, err
 			}

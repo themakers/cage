@@ -198,7 +198,7 @@ func (c *Cage) collectRawFile(col *envCollector, prefix, p string) error {
 		if !IsEnvSecretName(s.Secret.Name) {
 			return fmt.Errorf("run -raw: %s is a blob secret (%s)", filepath.Base(p), s.Secret.Name)
 		}
-		plain, err := c.decryptSecretPayload(s.Secret.Payload)
+		plain, err := c.decryptSecret(s)
 		if err != nil {
 			return err
 		}
@@ -213,7 +213,7 @@ func (c *Cage) collectRawFile(col *envCollector, prefix, p string) error {
 				c.Logger.Debug("run -raw: skipping blob in environment", "env_file", filepath.Base(p), "secret", s.Secret.Name)
 				continue
 			}
-			plain, err := c.decryptSecretPayload(s.Secret.Payload)
+			plain, err := c.decryptSecret(&s)
 			if err != nil {
 				return err
 			}

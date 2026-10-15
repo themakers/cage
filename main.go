@@ -74,6 +74,8 @@ func main() {
 		exitErr(cmdRm(logger, *wd, cmdArgs))
 	case "comment":
 		exitErr(cmdComment(logger, *wd, cmdArgs))
+	case "resolve":
+		exitErr(cmdResolve(logger, *wd, cmdArgs))
 	case "skill":
 		fmt.Print(skillText)
 		return

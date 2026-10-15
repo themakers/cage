@@ -139,7 +139,7 @@ func TestDecryptAllSkipsSecretsOfOtherRecipients(t *testing.T) {
 func TestEnvCollisionsAndPrefix(t *testing.T) {
 	alice, bob := newTestKey(t), newTestKey(t)
 	c := newTestCage(t, alice, bob, alice)
-	writePlain(t, c, "a.env", "USER=a\nPASSWORD=pa")       // no trailing newline
+	writePlain(t, c, "a.env", "USER=a\nPASSWORD=pa")      // no trailing newline
 	writePlain(t, c, "b.env", "USER=b\nPASSWORD='p b'\n") // same names
 
 	if _, err := c.BuildEnv([]string{"a.env", "b.env"}, false); err == nil || !strings.Contains(err.Error(), "defined by both") {
@@ -173,6 +173,13 @@ func TestEnvCollisionsAndPrefix(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "PASSWORD=pa\nOTHER=x\n") {
 		t.Fatalf("files must be separated by a newline:\n%q", out.String())
+	}
+}
+
+func TestParseDotenvCommentWithQuote(t *testing.T) {
+	m, err := ParseDotenv([]byte("# without \"=\" here\nX=1\n  # x = 'y\n"))
+	if err != nil || m["X"] != "1" || len(m) != 1 {
+		t.Fatalf("%v %v", m, err)
 	}
 }
 

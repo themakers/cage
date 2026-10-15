@@ -3,8 +3,8 @@ package libcage
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
+	"strings"
 )
 
 func (c *Cage) EncryptAll() error {
@@ -15,21 +15,8 @@ func (c *Cage) EncryptAll() error {
 		return err
 	}
 
-	// Warn about .gitignore in each configured plaintext directory.
-	for alias, rel := range c.Cfg.Dirs {
-		abs := filepath.Join(c.Root, filepath.FromSlash(rel))
-		st, err := CheckGitignore(abs)
-		if err != nil {
-			c.Logger.Warn("gitignore check failed", "dir_alias", alias, "dir", abs, "err", err)
-			continue
-		}
-		if !st.Exists {
-			c.Logger.Warn("missing .gitignore for secrets directory", "dir_alias", alias, "dir", abs)
-			continue
-		}
-		if !st.KeepsSelfOnly {
-			c.Logger.Warn(".gitignore does not look like 'ignore everything except itself'", "dir_alias", alias, "dir", abs, "path", st.Path)
-		}
+	if err := c.WriteGitignore(); err != nil {
+		return err
 	}
 
 	secretRecipients, envRefs, err := c.buildRecipientPlan()
@@ -40,56 +27,68 @@ func (c *Cage) EncryptAll() error {
 		return errors.New("no secrets referenced in envs")
 	}
 
-	// Encrypt individual secrets.
+	//> Phase 1: check everything, write nothing on refusal. A plaintext that
+	//> is behind or diverged from the store would silently revert someone
+	//> else's change.
+	states := map[SecretRef]syncInfo{}
+	var refusals []string
+	for ref := range secretRecipients {
+		in, err := c.syncState(ref)
+		if err != nil {
+			return fmt.Errorf("%s: %w", ref, err)
+		}
+		states[ref] = in
+		if err := requireEditable(ref, in); err != nil {
+			refusals = append(refusals, err.Error())
+			continue
+		}
+		//> Only what is about to be published must parse.
+		if in.Plain != nil && IsEnvSecretName(ref.Name) && (in.S == nil || in.S.SHA != in.L) {
+			if _, err := ParseDotenv(in.Plain); err != nil {
+				refusals = append(refusals, fmt.Sprintf("%s: does not parse: %v", ref, err))
+			}
+		}
+	}
+	if len(refusals) > 0 {
+		sort.Strings(refusals)
+		return errors.New("encrypt refused, nothing written:\n  " + strings.Join(refusals, "\n  "))
+	}
+
+	// Phase 2: encrypt individual secrets.
 	for ref, recips := range secretRecipients {
+		in := states[ref]
 		storePath, err := c.StoreSecretPath(ref)
 		if err != nil {
 			return err
 		}
 
-		plainPath, err := c.PlaintextPath(ref)
-		if err != nil {
-			return err
-		}
-
-		plain, plainExists, err := ReadFileIfExists(plainPath)
-		if err != nil {
-			return err
-		}
-
-		var existing *SecretV1
-		if b, ok, err := ReadFileIfExists(storePath); err != nil {
-			return err
-		} else if ok {
-			k, err := ReadKind(b)
-			if err != nil {
-				return fmt.Errorf("read %s: %w", storePath, err)
-			}
-			if k != "secret/v1" {
-				return fmt.Errorf("%s: unsupported kind %q", storePath, k)
-			}
-			ex, err := ParseSecretV1(b)
-			if err != nil {
-				return fmt.Errorf("parse %s: %w", storePath, err)
-			}
-			existing = ex
-		}
-
-		if !plainExists {
-			if existing != nil {
-				c.Logger.Warn("plaintext missing; keeping existing encrypted secret", "secret", ref.String(), "plaintext", plainPath)
+		if in.Plain == nil {
+			if in.S != nil {
+				c.Logger.Debug("plaintext missing; keeping existing encrypted secret", "secret", ref.String())
 				continue
 			}
-			return fmt.Errorf("plaintext missing and no encrypted secret exists: %s", plainPath)
+			return fmt.Errorf("plaintext missing and no encrypted secret exists: %s", ref)
 		}
+		plain := in.Plain
 
-		sha := SHA256Hex(plain)
+		sha := in.L
 		recips = NormalizeRecipients(recips)
 
-		if existing != nil {
-			if existing.Secret.PlaintextSHA256 == sha && equalStringSlices(existing.Secret.Recipients, recips) {
-				// unchanged: do not touch the file.
+		var history []string
+		if in.S != nil {
+			if in.S.SHA == sha && equalStringSlices(in.S.File.Secret.Recipients, recips) {
+				// unchanged: do not touch the file; record the base.
+				if err := c.setBase(ref, in.S); err != nil {
+					return err
+				}
 				continue
+			}
+			history = in.S.History
+			if in.S.SHA != sha {
+				history = append([]string{in.S.SHA}, in.S.History...)
+			}
+			if len(history) > HistoryLimit {
+				history = history[:HistoryLimit]
 			}
 		}
 
@@ -107,6 +106,7 @@ func (c *Cage) EncryptAll() error {
 			Secret: SecretBody{
 				Name:            ref.Name,
 				PlaintextSHA256: sha,
+				History:         history,
 				Payload:         EncodePayload(cipher),
 				Recipients:      recips,
 			},
@@ -118,65 +118,60 @@ func (c *Cage) EncryptAll() error {
 		if err := AtomicWriteFile(storePath, out, 0o600); err != nil {
 			return err
 		}
+		if err := c.setBase(ref, &version{SHA: sha, History: history, File: sec, Raw: out}); err != nil {
+			return err
+		}
 		c.Logger.Info("encrypted", "secret", ref.String(), "out", storePath, "recipients", len(recips))
 	}
 
-	// Build compiled environments.
+	//> Compiled envs are derived from store files and always rebuilt (a git
+	//> conflict in one is resolved by this; the old content is never parsed).
 	for envName, refs := range envRefs {
 		envPath, err := c.StoreEnvPath(envName)
 		if err != nil {
 			return err
 		}
-
-		var embedded []SecretV1
-		seenName := map[string]bool{}
-		for _, ref := range refs {
-			storePath, err := c.StoreSecretPath(ref)
-			if err != nil {
-				return err
-			}
-			b, ok, err := ReadFileIfExists(storePath)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return fmt.Errorf("missing encrypted secret for env %q: %s", envName, storePath)
-			}
-			s, err := ParseSecretV1(b)
-			if err != nil {
-				return fmt.Errorf("parse %s: %w", storePath, err)
-			}
-			// De-dup by secret name in env artifact to avoid duplicates.
-			if seenName[s.Secret.Name] {
-				continue
-			}
-			seenName[s.Secret.Name] = true
-			embedded = append(embedded, *s)
-		}
-		env := &EnvironmentV1{
-			Kind:        "environment/v1",
-			Environment: EnvironmentBody{Name: envName, Secrets: embedded},
-		}
-		out, err := MarshalEnvironmentStable(env)
+		out, err := c.compileEnv(envName, refs)
 		if err != nil {
 			return err
 		}
-
 		if prev, ok, err := ReadFileIfExists(envPath); err != nil {
 			return err
-		} else if ok {
-			if bytesEqual(prev, out) {
-				continue
-			}
+		} else if ok && bytesEqual(prev, out) {
+			continue
 		}
-
 		if err := AtomicWriteFile(envPath, out, 0o600); err != nil {
 			return err
 		}
-		c.Logger.Info("compiled env", "env", envName, "out", envPath, "secrets", len(embedded))
+		c.Logger.Info("compiled env", "env", envName, "out", envPath)
 	}
 
 	return nil
+}
+
+// compileEnv — content of a compiled env from the current store files.
+func (c *Cage) compileEnv(envName string, refs []SecretRef) ([]byte, error) {
+	var embedded []SecretV1
+	seenName := map[string]bool{}
+	for _, ref := range refs {
+		s, err := c.readStoreVersion(ref)
+		if err != nil {
+			return nil, err
+		}
+		if s == nil {
+			return nil, fmt.Errorf("missing encrypted secret for env %q: %s", envName, ref)
+		}
+		// De-dup by secret name in env artifact to avoid duplicates.
+		if seenName[s.File.Secret.Name] {
+			continue
+		}
+		seenName[s.File.Secret.Name] = true
+		embedded = append(embedded, *s.File)
+	}
+	return MarshalEnvironmentStable(&EnvironmentV1{
+		Kind:        "environment/v1",
+		Environment: EnvironmentBody{Name: envName, Secrets: embedded},
+	})
 }
 
 func (c *Cage) buildRecipientPlan() (map[SecretRef][]string, map[string][]SecretRef, error) {

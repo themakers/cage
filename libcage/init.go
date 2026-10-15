@@ -2,17 +2,22 @@ package libcage
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
 
+func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
 const DefaultInitYAML = `kind: cage/v1
 
-# dirs are non-recursive; paths are relative to cage root
+# dirs are non-recursive; paths are relative to cage root and must be
+# inside .cage/ (cage keeps .cage/.gitignore ignoring them).
 # "default" is reserved and may be used without prefix
 
 dirs:
-  default: secrets
+  default: .cage/secrets
 
 recipients: {}
 
@@ -34,5 +39,12 @@ func InitCage(root string) error {
 	if _, err := os.Stat(cfgPath); err == nil {
 		return fmt.Errorf("%s already exists", cfgPath)
 	}
-	return AtomicWriteFile(cfgPath, []byte(DefaultInitYAML), 0o600)
+	if err := AtomicWriteFile(cfgPath, []byte(DefaultInitYAML), 0o600); err != nil {
+		return err
+	}
+	cfg, err := LoadConfig(cfgPath)
+	if err != nil {
+		return err
+	}
+	return (&Cage{Root: root, Cfg: cfg, Logger: discardLogger()}).WriteGitignore()
 }

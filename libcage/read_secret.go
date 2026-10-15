@@ -5,30 +5,21 @@ import (
 	"os"
 )
 
+// ReadSecretPlainPreferStore returns the content of a secret: the store
+// version when it exists and identities are available, otherwise the
+// plaintext file.
 func (c *Cage) ReadSecretPlainPreferStore(ref SecretRef) ([]byte, error) {
-	// Prefer encrypted secret if available and we have identities.
-	if c.Root != "" {
-		storePath, err := c.StoreSecretPath(ref)
-		if err == nil {
-			b, ok, err := ReadFileIfExists(storePath)
+	if c.Root != "" && !c.Ids.Empty() {
+		s, err := c.readStoreVersion(ref)
+		if err != nil {
+			return nil, err
+		}
+		if s != nil {
+			plain, err := c.decryptSecret(s.File)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("decrypt %s: %w", ref, err)
 			}
-			if ok && !c.Ids.Empty() {
-				s, err := ParseSecretV1(b)
-				if err != nil {
-					return nil, fmt.Errorf("parse %s: %w", storePath, err)
-				}
-				cipher, err := DecodePayload(s.Secret.Payload)
-				if err != nil {
-					return nil, fmt.Errorf("decode payload %s: %w", storePath, err)
-				}
-				plain, err := DecryptBytes(cipher, c.Ids.Age()...)
-				if err != nil {
-					return nil, fmt.Errorf("decrypt %s: %w", storePath, err)
-				}
-				return plain, nil
-			}
+			return plain, nil
 		}
 	}
 
@@ -36,13 +27,13 @@ func (c *Cage) ReadSecretPlainPreferStore(ref SecretRef) ([]byte, error) {
 	if c.Root == "" || c.Cfg == nil {
 		return nil, fmt.Errorf("no cage root/config for plaintext fallback")
 	}
-	plainPath, err := c.PlaintextPath(ref)
+	p, err := c.PlaintextPath(ref)
 	if err != nil {
 		return nil, err
 	}
-	b, err := os.ReadFile(plainPath)
+	b, err := os.ReadFile(p)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read plaintext %s: %w", p, err)
 	}
 	return b, nil
 }

@@ -40,10 +40,12 @@ Use:
       "PREFIX_=item". The same variable from two secrets is an error.
 
 Maintain:
-  cage encrypt                encrypt secrets, compile envs (cage.yaml)
-  cage decrypt                decrypt secrets you are a recipient of
+  cage encrypt                publish local changes; refuses if the store is newer
+  cage decrypt                update from the store, merging local changes (git-style
+                              conflict markers where both sides changed the same lines)
+  cage resolve (-local | -store) <ref>   keep one side in every conflict
   cage decrypt -raw <*.cage files or dirs> -o <dir>
-  cage init                   create .cage/cage.yaml
+  cage init                   create .cage/cage.yaml and .cage/.gitignore
 
 Notes:
   - secret ref: name.env or alias:name.env; variable ref: <ref>:KEY.
