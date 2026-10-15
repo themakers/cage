@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	filippo.io/age v1.3.2
-	github.com/direnv/direnv/v2 v2.37.2-0.20260107195728-02040c767ba6
+	github.com/direnv/direnv/v2 v2.37.2-0.20260331184448-b00e451f547f
 	golang.org/x/crypto v0.57.0
 	gopkg.in/yaml.v3 v3.0.1
 )

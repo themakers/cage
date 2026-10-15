@@ -20,6 +20,19 @@ type SSHIdentity struct {
 	Identity    age.Identity
 	Source      string // human-readable
 	Fingerprint string // optional
+	// PublicKey — "type base64" of the key (from the private key or its .pub);
+	// empty if unknown.
+	PublicKey string
+}
+
+func keyPublic(priv []byte, privPath string) string {
+	if pk := publicKeyFromPrivate(priv); pk != "" {
+		return pk
+	}
+	if privPath == "" {
+		return ""
+	}
+	return publicKeyFromPubFile(privPath + ".pub")
 }
 
 type Identities struct {
@@ -111,7 +124,7 @@ func identityFromCAGEEnv(lg *slog.Logger) (SSHIdentity, bool) {
 			lg.Warn("CAGE_SSH_IDENTITY looks like key text but parse failed", "err", err)
 			return SSHIdentity{}, false
 		}
-		return SSHIdentity{Identity: ident, Source: "CAGE_SSH_IDENTITY(text)"}, true
+		return SSHIdentity{Identity: ident, Source: "CAGE_SSH_IDENTITY(text)", PublicKey: keyPublic([]byte(val), "")}, true
 	}
 
 	home, _ := os.UserHomeDir()
@@ -132,7 +145,7 @@ func identityFromCAGEEnv(lg *slog.Logger) (SSHIdentity, bool) {
 		return SSHIdentity{}, false
 	}
 	fp := fingerprintFromPubFileIfExists(p + ".pub")
-	return SSHIdentity{Identity: ident, Source: "CAGE_SSH_IDENTITY(path:" + filepath.Base(p) + ")", Fingerprint: fp}, true
+	return SSHIdentity{Identity: ident, Source: "CAGE_SSH_IDENTITY(path:" + filepath.Base(p) + ")", Fingerprint: fp, PublicKey: keyPublic(b, p)}, true
 }
 
 func looksLikePrivateKeyPEM(s string) bool {
@@ -188,7 +201,7 @@ func identitiesFromSSHConfig(lg *slog.Logger) ([]SSHIdentity, error) {
 			continue
 		}
 		fp := fingerprintFromPubFileIfExists(p + ".pub")
-		out = append(out, SSHIdentity{Identity: ident, Source: "~/.ssh/config:" + filepath.Base(p), Fingerprint: fp})
+		out = append(out, SSHIdentity{Identity: ident, Source: "~/.ssh/config:" + filepath.Base(p), Fingerprint: fp, PublicKey: keyPublic(b, p)})
 	}
 	return out, nil
 }
@@ -213,7 +226,7 @@ func identitiesFromStandardSSHFiles(lg *slog.Logger) ([]SSHIdentity, error) {
 			continue
 		}
 		fp := fingerprintFromPubFileIfExists(p + ".pub")
-		out = append(out, SSHIdentity{Identity: ident, Source: "~/.ssh/" + name, Fingerprint: fp})
+		out = append(out, SSHIdentity{Identity: ident, Source: "~/.ssh/" + name, Fingerprint: fp, PublicKey: keyPublic(b, p)})
 	}
 	return out, nil
 }
@@ -253,7 +266,7 @@ func identitiesFromSSHDirScan(lg *slog.Logger) ([]SSHIdentity, error) {
 			continue
 		}
 		fp := fingerprintFromPubFileIfExists(p + ".pub")
-		out = append(out, SSHIdentity{Identity: ident, Source: "~/.ssh(scan):" + name, Fingerprint: fp})
+		out = append(out, SSHIdentity{Identity: ident, Source: "~/.ssh(scan):" + name, Fingerprint: fp, PublicKey: keyPublic(b, p)})
 	}
 	return out, nil
 }

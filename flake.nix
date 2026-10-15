@@ -44,7 +44,7 @@
             subPackages = [ "." ];
 
             #vendorHash = nixpkgs.lib.fakeHash;
-            vendorHash = "sha256-KHYWHAbjhFdniilh0wkAN5lNNP1G3aygQWhlwq62InA=";
+            vendorHash = "sha256-ZnV3o4kdBI3of+hk4jkh9fuB52b7DnpiW8K7HBT65jI=";
 
             buildFlagsArray = [
               "CGO_ENABLED=0"

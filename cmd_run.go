@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -18,31 +20,19 @@ func cmdRun(logger *slog.Logger, wd string, args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	raw := fs.Bool("raw", false, "raw mode: read explicit .cage files/directories")
+	noMask := fs.Bool("no-mask", false, "do not mask secret values in the command output")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	rest := fs.Args()
-	sep := -1
-	for i, a := range rest {
-		if a == "-" {
-			sep = i
-			break
-		}
+	secretSpecs, cmdArgs, err := splitAtDash(fs.Args(), "run")
+	if err != nil {
+		return err
 	}
-	if sep == -1 {
-		return fmt.Errorf("run: expected '-' separator before command")
-	}
-	secretSpecs := rest[:sep]
-	cmdArgs := rest[sep+1:]
 	if len(secretSpecs) == 0 {
 		return fmt.Errorf("run: provide secrets/@env before '-'")
 	}
-	if len(cmdArgs) == 0 {
-		return fmt.Errorf("run: provide command after '-'")
-	}
 
 	var c *libcage.Cage
-	var err error
 	if *raw {
 		c, err = newRawCage(logger)
 	} else {
@@ -56,20 +46,75 @@ func cmdRun(logger *slog.Logger, wd string, args []string) error {
 		return err
 	}
 
-	vars, err := c.BuildEnvVars(secretSpecs, *raw)
+	vars, err := c.BuildEnv(secretSpecs, *raw)
 	if err != nil {
 		return err
 	}
+	m := make(map[string]string, len(vars))
+	values := make([]string, 0, len(vars))
+	for _, v := range vars {
+		m[v.Name] = v.Value
+		values = append(values, v.Value)
+	}
+	cmdArgs = expandArgVars(cmdArgs, m)
 
-	cmdArgs = expandArgVars(cmdArgs, vars)
+	var patterns [][]byte
+	if !*noMask && !interactive() {
+		patterns = libcage.MaskPatterns(values)
+	}
+	return runCommand(cmdArgs, mergeEnv(os.Environ(), m), os.Stdout, patterns)
+}
 
-	merged := mergeEnv(os.Environ(), vars)
+// runCommand runs the command with env; stdout goes to out, stderr to
+// os.Stderr, both masked by patterns (if any). The exit code of the command
+// becomes the exit code of cage.
+func runCommand(cmdArgs, env []string, out io.Writer, patterns [][]byte) error {
 	ex := exec.Command(cmdArgs[0], cmdArgs[1:]...)
-	ex.Env = merged
+	ex.Env = env
 	ex.Stdin = os.Stdin
-	ex.Stdout = os.Stdout
-	ex.Stderr = os.Stderr
-	return ex.Run()
+	var closers []*libcage.MaskWriter
+	wrap := func(w io.Writer) io.Writer {
+		if len(patterns) == 0 {
+			return w
+		}
+		mw := libcage.NewMaskWriter(w, patterns)
+		closers = append(closers, mw)
+		return mw
+	}
+	ex.Stdout = wrap(out)
+	ex.Stderr = wrap(os.Stderr)
+	err := ex.Run()
+	for _, c := range closers {
+		_ = c.Close()
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		os.Exit(exitErr.ExitCode())
+	}
+	return err
+}
+
+// interactive: a human at a terminal (stdin and stdout are terminals).
+// Masking needs to intercept output, which breaks interactive programs.
+func interactive() bool {
+	return isTerminal(os.Stdin) && isTerminal(os.Stdout)
+}
+
+func isTerminal(f *os.File) bool {
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
+}
+
+func splitAtDash(rest []string, cmd string) ([]string, []string, error) {
+	for i, a := range rest {
+		if a == "-" {
+			if i == len(rest)-1 {
+				return nil, nil, fmt.Errorf("%s: provide command after '-'", cmd)
+			}
+			return rest[:i], rest[i+1:], nil
+		}
+	}
+	return nil, nil, fmt.Errorf("%s: expected '-' separator before command", cmd)
 }
 
 func mergeEnv(base []string, add map[string]string) []string {

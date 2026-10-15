@@ -45,7 +45,8 @@ curl -fsSL https://raw.githubusercontent.com/themakers/cage/master/curl-install.
 ```bash
 cage init              # create .cage/cage.yaml
 cage encrypt           # encrypt all secrets
-cage decrypt           # decrypt all secrets (if you have keys)
+cage decrypt           # decrypt secrets you are a recipient of (others are skipped)
+cage whoami            # which recipients of cage.yaml you are
 ```
 
 ---
@@ -57,19 +58,51 @@ cage run @dev - npm start
 cage run secret.env - ./app
 ```
 
-Secrets are loaded into the process environment only.
+Secrets are loaded into the process environment only. Secret values in the
+command's stdout/stderr are masked (`****************`) unless stdin and
+stdout are a terminal; `-no-mask` disables masking.
+
+`PREFIX_=ref` prefixes the variables of a secret (one consumer, several
+accounts of the same shape). The same variable name coming from two
+different secrets is an error, not a silent override.
 
 ---
 
 ## Dump secrets
 
 ```bash
-cage dump @dev                    # dump all .env secrets from env
-cage dump config.env              # dump a single secret
-cage dump ./file.bin.cage > file  # dump a blob (raw bytes)
+cage dump -o .env @dev                 # all .env secrets of an env
+cage dump -o app.env config.env        # a single secret
+cage dump -o file ./file.bin.cage      # a blob (raw bytes)
+cage dump -o db.env DB_=ops:db.env     # prefixed variables
 ```
 
-(`.env` and blobs cannot be mixed in one dump)
+Values are written only to an explicit file (0600); `-o /dev/stdout` is a
+deliberate choice. `.env` and blobs cannot be mixed in one dump.
+
+---
+
+## Inspect and edit without seeing values
+
+Designed for LLM agents (and screen-sharing humans): nothing below prints a
+secret value. Agents: read `cage skill`.
+
+```bash
+cage status                                # plaintext vs store, readability, env conflicts
+cage inspect ops:db.env                    # shape, length, fingerprint, duplicates per variable
+cage set -gen random:base64:32 db.env PASSWORD
+cage set -plain s3.example.com db.env ENDPOINT
+printer | cage set -stdin db.env TOKEN
+cage import -with admin.env new.env - sh -c 'curl … | jq -r "\"TOKEN=\"+.token"'
+cage keygen -comment ci ops:ci-key         # prints the public key
+cage mv old.env:KEY new.env:NEW_KEY
+cage rm db.env:LEGACY
+cage comment -text "rotated monthly" db.env:PASSWORD
+```
+
+Fingerprints are HMACs keyed per run: equal values are visible as equal
+within one report, but cannot be checked against a guess. Every edit keeps
+comments and order, validates the file and runs `encrypt`.
 
 ---
 

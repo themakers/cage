@@ -47,6 +47,12 @@ func (c *Cage) DecryptAll() error {
 			return fmt.Errorf("decode payload %s: %w", storePath, err)
 		}
 		plain, err := DecryptBytes(cipher, c.Ids.Age()...)
+		if isNotRecipient(err) {
+			//> Secrets addressed to other recipients (e.g. personal credentials
+			//> of another engineer) are not ours to decrypt.
+			c.Logger.Info("skipped: not a recipient", "secret", ref.String())
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("decrypt %s: %w", storePath, err)
 		}

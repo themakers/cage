@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -27,13 +28,18 @@ func main() {
 	global := flag.NewFlagSet("cage", flag.ContinueOnError)
 	global.SetOutput(os.Stderr)
 	wd := global.String("wd", "", "cage root (directory containing .cage); if omitted, discover from CWD")
+	global.Usage = func() {}
 	if err := global.Parse(os.Args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			printUsage(os.Stdout)
+			return
+		}
 		exitErr(err)
 	}
 	args := global.Args()
 	if len(args) == 0 {
-		printUsage(os.Stderr)
-		os.Exit(2)
+		printUsage(os.Stdout)
+		return
 	}
 
 	cmd := args[0]
@@ -50,7 +56,28 @@ func main() {
 		exitErr(cmdRun(logger, *wd, cmdArgs))
 	case "init":
 		exitErr(cmdInit(logger, *wd, cmdArgs))
-	case "-h", "--help", "help":
+	case "inspect":
+		exitErr(cmdInspect(logger, *wd, cmdArgs))
+	case "status":
+		exitErr(cmdStatus(logger, *wd, cmdArgs))
+	case "whoami":
+		exitErr(cmdWhoami(logger, *wd, cmdArgs))
+	case "set":
+		exitErr(cmdSet(logger, *wd, cmdArgs))
+	case "import":
+		exitErr(cmdImport(logger, *wd, cmdArgs))
+	case "keygen":
+		exitErr(cmdKeygen(logger, *wd, cmdArgs))
+	case "mv":
+		exitErr(cmdMv(logger, *wd, cmdArgs))
+	case "rm":
+		exitErr(cmdRm(logger, *wd, cmdArgs))
+	case "comment":
+		exitErr(cmdComment(logger, *wd, cmdArgs))
+	case "skill":
+		fmt.Print(skillText)
+		return
+	case "-h", "-help", "--help", "help":
 		printUsage(os.Stdout)
 		return
 	default:
