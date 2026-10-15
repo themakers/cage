@@ -193,7 +193,7 @@ func TestMaskWriterAcrossWrites(t *testing.T) {
 }
 
 func TestDotenvEditPreservesFileAndRejectsMask(t *testing.T) {
-	src := "# header\nA=1\n\n# about B\nB = two words\n#C=old\nexport D=\"d\"\n"
+	src := "# header\nA=1\n\n# about B\nB = 'two words'\n#C=old\nexport D=\"d\"\n"
 	f := ParseDotenvFile([]byte(src))
 	if v, ok, err := f.Get("B"); err != nil || !ok || v != "two words" {
 		t.Fatalf("B: %q %v %v", v, ok, err)
