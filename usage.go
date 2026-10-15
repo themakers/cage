@@ -25,7 +25,7 @@ Change (edits plaintext, then encrypts; -no-encrypt to batch):
   cage set (-gen spec | -stdin | -plain value) [-comment t] <ref> <KEY>
   cage import [-with ref]... <ref> - <cmd...>    store KEY=VALUE lines from cmd stdout
   cage keygen [-comment c] <ref>                 new ssh-ed25519 key; prints public key
-  cage mv <ref>:KEY <ref>[:NEWKEY]
+  cage mv <ref>:KEY <ref>[:NEWKEY] | cage mv <ref> <newref>
   cage rm <ref>:KEY | cage rm -file <ref>
   cage comment [-text t] [-disable | -enable] <ref>:KEY
 

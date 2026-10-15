@@ -245,7 +245,27 @@ func cmdMv(logger *slog.Logger, wd string, args []string) error {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return fmt.Errorf("mv: usage: cage mv <ref>:KEY <ref>[:NEWKEY]")
+		return fmt.Errorf("mv: usage: cage mv <ref>:KEY <ref>[:NEWKEY] | cage mv <ref> <newref>")
+	}
+	if !strings.Contains(fs.Arg(0), ".env:") {
+		//> Whole secret rename.
+		src, err := libcage.ParseSecretRef(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		dst, err := libcage.ParseSecretRef(fs.Arg(1))
+		if err != nil {
+			return err
+		}
+		c, err := rootCage(logger, wd)
+		if err != nil {
+			return err
+		}
+		if err := c.MoveSecret(src, dst); err != nil {
+			return err
+		}
+		fmt.Printf("moved %s -> %s\n", src, dst)
+		return finish(c, *noEncrypt, dst)
 	}
 	src, key, err := parseVarRef(fs.Arg(0))
 	if err != nil {

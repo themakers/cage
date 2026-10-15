@@ -116,6 +116,39 @@ func (c *Cage) MoveVar(src SecretRef, key string, dst SecretRef, newKey string) 
 	})
 }
 
+// MoveSecret renames a secret: the plaintext (restored from the store if
+// missing) is written as dst, then src files are removed. dst is encrypted
+// by the next encrypt (it must be listed in cage.yaml).
+func (c *Cage) MoveSecret(src, dst SecretRef) error {
+	if src == dst {
+		return nil
+	}
+	if IsEnvSecretName(src.Name) != IsEnvSecretName(dst.Name) {
+		return fmt.Errorf("mv: %s and %s must both be .env secrets or both blobs", src, dst)
+	}
+	if p, err := c.PlaintextPath(dst); err != nil {
+		return err
+	} else if _, err := os.Stat(p); err == nil {
+		return fmt.Errorf("mv: %s already exists", dst)
+	}
+	if s, err := c.StoreSecretPath(dst); err != nil {
+		return err
+	} else if _, err := os.Stat(s); err == nil {
+		return fmt.Errorf("mv: %s already exists in the store", dst)
+	}
+	plain, err := c.ReadPlainForEdit(src)
+	if err != nil {
+		return err
+	}
+	if plain == nil {
+		return fmt.Errorf("mv: %s does not exist", src)
+	}
+	if err := c.WritePlain(dst, plain); err != nil {
+		return err
+	}
+	return c.RemoveSecretFiles(src)
+}
+
 // RemoveSecretFiles deletes the plaintext and the store file of ref.
 func (c *Cage) RemoveSecretFiles(ref SecretRef) error {
 	p, err := c.PlaintextPath(ref)

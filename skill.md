@@ -71,7 +71,9 @@ encrypted — add it to cage.yaml (plain YAML, no values inside) first.
     `cage import vapid.env - sh -c 'tool keys | jq -r "\"PUB=\"+.pub, \"PRIV=\"+.priv"'`
 - `cage keygen [-comment c] <ref>` — new ssh-ed25519 private key as blob
   `<ref>`; prints the public key line (not secret).
-- `cage mv <ref>:KEY <ref2>[:NEWKEY]` — move/rename a variable.
+- `cage mv <ref>:KEY <ref2>[:NEWKEY]` — move/rename a variable;
+  `cage mv <ref> <newref>` — rename a whole secret (update cage.yaml to the
+  new name before encrypt).
 - `cage rm <ref>:KEY` — delete a variable; `cage rm -file <ref>` — delete a
   whole secret (remove it from cage.yaml first).
 - `cage comment -text "…" <ref>:KEY`, `-disable` (comment out), `-enable`.
