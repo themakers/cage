@@ -77,7 +77,9 @@ encrypted — add it to cage.yaml (plain YAML, no values inside) first.
 - `cage rm <ref>:KEY` — delete a variable (`-commented` — its commented-out
   copies); `cage rm -file <ref>` — delete a
   whole secret (remove it from cage.yaml first).
-- `cage comment -text "…" <ref>:KEY`, `-disable` (comment out), `-enable`.
+- `cage comment -text "…" <ref>:KEY` (`-commented` — above the first
+  commented-out assignment, i.e. a disabled block), `-disable` (comment out),
+  `-enable`.
 
 ## Use
 

@@ -196,6 +196,16 @@ func (f *DotenvFile) Annotate(key, text string) error {
 	if i < 0 {
 		i = f.commented(key)
 	}
+	return f.annotateAt(i, key, text)
+}
+
+// AnnotateCommented is Annotate for the first commented-out assignment
+// (a disabled block next to an active value).
+func (f *DotenvFile) AnnotateCommented(key, text string) error {
+	return f.annotateAt(f.commented(key), key, text)
+}
+
+func (f *DotenvFile) annotateAt(i int, key, text string) error {
 	if i < 0 {
 		return fmt.Errorf("%s: no assignment", key)
 	}

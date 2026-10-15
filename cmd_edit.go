@@ -350,6 +350,7 @@ func cmdComment(logger *slog.Logger, wd string, args []string) error {
 	text := fs.String("text", "", "comment to put above the variable (replaces the comment block above it)")
 	disable := fs.Bool("disable", false, "comment out the variable")
 	enable := fs.Bool("enable", false, "uncomment the variable")
+	inCommented := fs.Bool("commented", false, "with -text: annotate the first commented-out assignment (a disabled block)")
 	noEncrypt := fs.Bool("no-encrypt", false, "do not run encrypt after the change")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -377,6 +378,9 @@ func cmdComment(logger *slog.Logger, wd string, args []string) error {
 			}
 		}
 		if *text != "" {
+			if *inCommented {
+				return f.AnnotateCommented(key, *text)
+			}
 			return f.Annotate(key, *text)
 		}
 		return nil
