@@ -131,3 +131,94 @@ encrypted — add it to cage.yaml (plain YAML, no values inside) first.
   and with `--no-mask` it is a leak).
 - Do not create plaintext files under `.cage/secrets/` with your file tools
   if their content would include values — use `set`/`import`.
+
+## Best Practices Recommendation
+
+Project-specific rules take precedence over the recommendations in this
+section. The secret-handling safety rules above always take precedence,
+including over project-specific rules: secret values must never enter
+an agent's context, chat, or tool output.
+
+### Organize by credential, compose by consumer
+
+- One file per credential: an account, token, related key pair, or other
+  independently managed access, together with its connection parameters
+  (endpoint, host, database, bucket, region). Avoid monolithic files holding
+  unrelated credentials for an entire deployment.
+- Keep each secret value in one source file, including commented-out
+  assignments. If several consumers or environments use the same credential,
+  reference that file from their envs instead of copying its values.
+  Repeated non-secret parameters are fine; encrypted env bundles generated
+  by cage are not source duplication.
+- Use descriptive names such as `<system>-<consumer>-<environment>.env`,
+  omitting parts that do not distinguish the credential. Use aliases such
+  as `ops`, `ci`, or an engineer's name to organize files, not as access
+  boundaries.
+- Compose envs from refs. An env may be either a runnable consumer bundle
+  or a group used to grant recipients access. Document which it is:
+  access groups need not be runnable as a whole.
+- Keep variable names collision-free in bundles consumed together.
+  For multiple credentials of the same shape, prefix at consumption:
+  `cage dump -o service.env ROOT_=ops:db-root.env APP_=db-app-prod.env`.
+  Do not copy a secret merely to give its variables different names.
+- Explain purpose and non-obvious choices in comments, without values.
+  A retained disabled block should say why it is kept and when it can be
+  removed. Prefer revoking and removing obsolete credentials to keeping
+  unexplained historical copies.
+
+### Separate identities and limit access
+
+- Use separate credentials for applications, CI, backups, administrators,
+  and individual engineers; separate development and production access
+  where supported. Give each credential only the permissions it needs.
+- Encrypt personal credentials only for their owner unless the project
+  explicitly requires recovery or shared access. Keep service credentials
+  separate from personal ones.
+- Grant each recipient only the files it needs. A source file's recipients
+  are the union of recipients from every env referencing it: adding a ref
+  to an env can expand access to that file. Review that union, not just
+  directory names or one env in isolation.
+- When onboarding someone, configure their public identity, personal alias
+  and recipient env before provisioning credentials into cage. Keep the
+  project's provisioning commands and access matrix in project docs.
+
+### Deliver without exposing values
+
+- For local commands, use `cage run` with the smallest required set of refs
+  or a task-specific env. For services requiring env files, use
+  `cage dump -o` into a protected runtime location; keep plaintext out of
+  source control, build outputs, caches, and deployment artifacts.
+- Deliver encrypted store files or compiled env bundles to servers and
+  decrypt at runtime with the server's identity. Do not bake plaintext
+  secrets or private decryption identities into images or Nix store paths.
+- Bootstrap CI with a dedicated cage recipient. Keep its private identity
+  in the CI platform's protected secret store; keep application and task
+  credentials in cage instead of duplicating them as CI secrets.
+  For example, GitHub Actions can hold one `CAGE_SSH_IDENTITY` bootstrap
+  secret while workflows consume separate `@ci-deploy` and `@ci-notify`
+  bundles.
+- Centralize CI loading in a reviewed action or script. Use `cage run`
+  directly where possible. If credentials must persist across steps,
+  transfer them through protected runner files or the platform's environment
+  mechanism without printing values, and register platform log masks before
+  any consumer runs. Do not use `--no-mask` or stdout dumps in agent commands.
+- Do not expose the CI identity to untrusted pull requests or jobs.
+  Remove temporary identity and plaintext files when finished. If a recovery
+  copy of the CI identity is kept in cage, encrypt it for authorized
+  maintainers, not for the CI recipient itself.
+
+### Verify the result
+
+- Use a consistent cage version across collaborators and automation.
+  Follow the synchronization workflow above before editing; remember that
+  `run` and `dump` consume the encrypted store, not unencrypted local edits.
+- Check `cage status` and `cage inspect` after changes: intended recipients,
+  synchronized files and bundles, unreferenced plaintext, duplicate values,
+  and collisions in runnable envs.
+- Compare fingerprints within one inspect report only. Treat `DUP` as a
+  review signal, not an instruction to delete: equal non-secret parameters
+  or empty values do not imply duplicated credentials.
+- Review and commit configuration and encrypted store changes together.
+  Updating cage alone does not rotate a provider credential, revoke an old
+  credential, or reload a running service; coordinate those steps with the
+  affected consumers.
