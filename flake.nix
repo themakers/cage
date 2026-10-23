@@ -85,5 +85,16 @@
       overlays.default = final: prev: {
         cage = self.packages.${final.stdenv.hostPlatform.system}.default;
       };
+
+      # cage secrets → systemd credentials; see `cage skill infra`.
+      nixosModules.cage = import ./nix/module.nix self;
+      nixosModules.default = self.nixosModules.cage;
+
+      checks = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (system:
+        let pkgs = import nixpkgs { inherit system; };
+        in {
+          cage = self.packages.${system}.default;
+          nixos-credentials = import ./nix/tests/credentials.nix { inherit self pkgs; };
+        });
     };
 }

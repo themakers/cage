@@ -82,6 +82,30 @@ deliberate choice. `.env` and blobs cannot be mixed in one dump.
 
 ---
 
+## Services: systemd credentials and NixOS
+
+Servers receive ciphertext only. `cage credentials prepare <manifest>`
+decrypts with an explicit machine identity and publishes the complete set on
+a root-only ramfs, systemd hands it to the service with `LoadCredential=`:
+no values in environment variables, arguments, logs or the Nix store.
+
+```nix
+{
+  imports = [ cage.nixosModules.cage ];
+  cage = {
+    enable = true;
+    identityFile = "/etc/ssh/ssh_host_ed25519_key";
+    services.myapp.credentials.config.sources = [ ./secrets/myapp.cage ];
+  };
+  # myapp reads $CREDENTIALS_DIRECTORY/config (%d/config)
+}
+```
+
+Details, guarantees and the pure systemd recipe: `cage skill infra`.
+`nix flake check` runs the NixOS VM test of the module.
+
+---
+
 ## Inspect and edit without seeing values
 
 Designed for LLM agents (and screen-sharing humans): nothing below prints a

@@ -11,6 +11,16 @@ install:  ## Build static executable and install it in $GOBIN
 	CGO_ENABLED=0 go install -tags=osusergo,netgo -ldflags='-extldflags="-static"'
 
 .PHONY:
+test:  ## Run Go tests
+	go vet ./...
+	go test ./...
+
+.PHONY:
+check:  ## Run Go tests and nix flake checks (NixOS VM test of the credentials module)
+	$(MAKE) test
+	nix flake check -L
+
+.PHONY:
 flake:  ## Build nix flake
 	nix flake update
 	nix build .#cage

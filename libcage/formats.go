@@ -3,6 +3,7 @@ package libcage
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -92,10 +93,14 @@ func ReadKind(b []byte) (string, error) {
 		Kind string `yaml:"kind"`
 	}
 	if err := yaml.Unmarshal(b, &hdr); err != nil {
-		return "", err
+		return "", errNotCageFile
 	}
 	return hdr.Kind, nil
 }
+
+// errNotCageFile replaces YAML errors, which may quote the parsed content
+// (e.g. plaintext mistakenly given where a .cage file is expected).
+var errNotCageFile = errors.New("not a valid cage file (content not shown)")
 
 // HistoryLimit — how many previous versions a store file remembers.
 const HistoryLimit = 100
@@ -117,7 +122,7 @@ func ParseSecretV1(b []byte) (*SecretV1, error) {
 	}
 	var s SecretV1
 	if err := yaml.Unmarshal(b, &s); err != nil {
-		return nil, err
+		return nil, errNotCageFile
 	}
 	if s.Kind != "secret/v1" {
 		return nil, fmt.Errorf("unexpected kind %q", s.Kind)
@@ -130,7 +135,7 @@ func ParseSecretV1(b []byte) (*SecretV1, error) {
 func ParseEnvironmentV1(b []byte) (*EnvironmentV1, error) {
 	var e EnvironmentV1
 	if err := yaml.Unmarshal(b, &e); err != nil {
-		return nil, err
+		return nil, errNotCageFile
 	}
 	if e.Kind != "environment/v1" {
 		return nil, fmt.Errorf("unexpected kind %q", e.Kind)

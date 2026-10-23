@@ -76,8 +76,12 @@ func main() {
 		exitErr(cmdComment(logger, *wd, cmdArgs))
 	case "resolve":
 		exitErr(cmdResolve(logger, *wd, cmdArgs))
+	case "credentials":
+		exitErr(cmdCredentials(logger, cmdArgs))
 	case "skill":
-		fmt.Print(skillText)
+		text, err := skill(cmdArgs)
+		exitErr(err)
+		fmt.Print(text)
 		return
 	case "-h", "-help", "--help", "help":
 		printUsage(os.Stdout)

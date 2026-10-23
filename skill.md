@@ -10,6 +10,9 @@ their age-encrypted copies in `.cage/store/**` (committed). `.cage/cage.yaml`
 defines dir aliases, recipients (SSH public keys and groups) and envs (bundles
 of secrets with their recipients).
 
+Integrating cage into infrastructure (servers, systemd services, NixOS,
+deployment): also read the output of `cage skill infra` before you start.
+
 ## The rule
 
 Secret values must never enter your context. Therefore:
@@ -185,12 +188,10 @@ an agent's context, chat, or tool output.
 ### Deliver without exposing values
 
 - For local commands, use `cage run` with the smallest required set of refs
-  or a task-specific env. For services requiring env files, use
-  `cage dump -o` into a protected runtime location; keep plaintext out of
-  source control, build outputs, caches, and deployment artifacts.
-- Deliver encrypted store files or compiled env bundles to servers and
-  decrypt at runtime with the server's identity. Do not bake plaintext
-  secrets or private decryption identities into images or Nix store paths.
+  or a task-specific env. Keep plaintext out of source control, build
+  outputs, caches, and deployment artifacts.
+- Servers and services: follow `cage skill infra` (ciphertext delivery,
+  machine identities, systemd credentials, NixOS module).
 - Bootstrap CI with a dedicated cage recipient. Keep its private identity
   in the CI platform's protected secret store; keep application and task
   credentials in cage instead of duplicating them as CI secrets.

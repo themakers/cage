@@ -4,10 +4,25 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"strings"
 )
 
 //go:embed skill.md
 var skillText string
+
+//go:embed skill_infra.md
+var skillInfraText string
+
+func skill(args []string) (string, error) {
+	switch {
+	case len(args) == 0:
+		return skillText, nil
+	case len(args) == 1 && args[0] == "infra":
+		return skillInfraText, nil
+	default:
+		return "", fmt.Errorf("skill: unknown topic %q (available: infra)", strings.Join(args, " "))
+	}
+}
 
 func printUsage(w io.Writer) {
 	fmt.Fprint(w, `Usage:
@@ -19,7 +34,7 @@ Look (no values are printed):
   cage whoami                 recipients of cage.yaml you are
   cage status                 plaintext vs store, readability, conflicts
   cage inspect [refs|@env]    variables: shape, length, fingerprint, duplicates
-  cage skill                  instructions for LLM agents
+  cage skill [infra]          instructions for LLM agents (infra: servers, systemd, NixOS)
 
 Change (edits plaintext, then encrypts; -no-encrypt to batch):
   cage set (-gen spec | -stdin | -plain value) [-comment t] <ref> <KEY>
@@ -38,6 +53,10 @@ Use:
   cage dump -o <file> <items...>
       Write secrets to a file (0600). Items: refs, @env, *.cage files,
       "PREFIX_=item". The same variable from two secrets is an error.
+
+Services (systemd credentials, see `+"`cage skill infra`"+`):
+  cage credentials prepare <manifest.json>   decrypt and publish a unit's credentials
+  cage credentials clean <manifest.json>     remove a unit's published credentials
 
 Maintain:
   cage encrypt                publish local changes; refuses if the store is newer

@@ -50,5 +50,26 @@ func ParseDotenv(b []byte) (map[string]string, error) {
 			lines[i] = ""
 		}
 	}
-	return dotenv.Parse(strings.Join(lines, "\n"))
+	m, err := dotenv.Parse(strings.Join(lines, "\n"))
+	if err != nil {
+		return nil, sanitizeDotenvError(err, lines)
+	}
+	return m, nil
+}
+
+// sanitizeDotenvError replaces the parser error, which quotes the offending
+// line verbatim (possibly a secret value), with its line number.
+func sanitizeDotenvError(err error, lines []string) error {
+	if bad, ok := strings.CutPrefix(err.Error(), "invalid line: "); ok {
+		for i, l := range lines {
+			if l == bad {
+				return fmt.Errorf("invalid dotenv syntax at line %d (content not shown)", i+1)
+			}
+		}
+		return fmt.Errorf("invalid dotenv syntax (content not shown)")
+	}
+	if strings.Contains(err.Error(), "unclosed quoted value") {
+		return fmt.Errorf("invalid dotenv syntax: unclosed quoted value (content not shown)")
+	}
+	return fmt.Errorf("invalid dotenv syntax (content not shown)")
 }
